@@ -52,8 +52,7 @@
 
 ### 系统要求
 
-- **操作系统**: Ubuntu 20.04/22.04 LTS
-- **ROS 2**: Humble 或 Iron 版本
+- **操作系统**: Ubuntu 20.04/22.04/24.04 LTS
 - **实时内核**: 推荐安装实时内核以获得更好的控制性能
 - **Docker**: 用于运行Franka ROS 2环境
 - **Meta Quest**: Quest 2/3/Pro VR头显及控制器
@@ -62,11 +61,16 @@
 
 1. **实时内核安装**:
    - 如果系统尚未安装实时内核，请按照Franka官方教程安装和测试
-   - 参考: https://frankaemika.github.io/docs/installation_linux.html
+   - 参考: https://github.com/frankarobotics/franka_ros2?tab=readme-ov-file#docker-container-installation
 
 2. **Docker环境**:
-   - 安装franka_ros2 Docker环境
-   - 参考: https://github.com/ZorAttC/libfranka-docker/blob/main/docker_launch_files/docker-compose.yml
+   - 安装官方franka_ros2 Docker环境
+   - 参考: https://github.com/frankarobotics/franka_ros2
+   - 建议在 'Build the workspace' 前切换 git 提交，以适配后面vr代码
+```
+git fetch --all
+git checkout 1530569
+```
 
 3. **ADB工具**:
    ```bash
@@ -78,6 +82,7 @@
 
 1. **克隆MoveIt2教程**:
    ```bash
+   mkdir
    cd /ws_moveit/src
    git clone -b main https://github.com/moveit/moveit2_tutorials
    vcs import --recursive < moveit2_tutorials/moveit2_tutorials.repos
@@ -108,6 +113,8 @@
    ```
 
 ### Meta Quest设备配置
+   
+可以参考这个博客中的回答：https://www.reddit.com/r/OculusQuest/comments/1bkixqx/adb_not_finding_quest_3/
 
 1. **启用开发者模式**:
    - 在Oculus手机应用中进入设置
@@ -135,7 +142,7 @@
    ```bash
    source /ros2_ws/install/setup.bash  # franka_ros2环境
    source /ws_moveit2/install/setup.bash  # MoveIt 2环境
-   ros2 launch franka_vr franka_twist.launch.py   namespace:=franka   gripper_namespace:=franka   robot_ip:=172.16.0.4   use_fake_hardware:=False   arm_id:=fr3
+   ros2 launch franka_vr franka_twist.launch.py   namespace:=franka   gripper_namespace:=franka   robot_ip:=xxx.xx.xxx   use_fake_hardware:=False   arm_id:=fr3
    ```
    启动后，RViz将显示Franka机械臂的当前姿态。
 
@@ -162,15 +169,6 @@
 - **控制器坐标系**: 左右手控制器的实时位置和姿态
 
 ### 参数配置
-
-#### 运行时参数调整
-系统支持通过ROS 2服务动态调整控制参数：
-
-```bash
-# 调整步长参数
-ros2 service call /set_step_size franka_vr/srv/SetStepSize \
-  "{linear_x: 0.01, linear_y: 0.01, linear_z: 0.01, angular_x: 0.1, angular_y: 0.1, angular_z: 0.1}"
-```
 
 #### 配置文件
 主要配置文件位于`franka_vr/config/`目录：
@@ -205,24 +203,6 @@ ros2 service call /set_step_size franka_vr/srv/SetStepSize \
    
    # 检查Quest IP地址（网络模式）
    adb shell ip route
-   ```
-
-4. **MoveIt Servo启动失败**:
-   ```bash
-   # 检查MoveIt版本兼容性
-   ros2 pkg list | grep moveit
-   
-   # 重新编译工作空间
-   colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release
-   ```
-
-5. **Franka控制器连接问题**:
-   ```bash
-   # 检查机器人IP地址
-   ping 172.31.1.31  # 默认IP地址
-   
-   # 检查网络连接
-   telnet 172.31.1.31 8080
    ```
 
 ### 性能优化
@@ -265,35 +245,9 @@ ros2 service call /set_step_size franka_vr/srv/SetStepSize \
 3. **数据过滤**: 改进Oculus数据的滤波算法
 4. **工作空间初始化**: 开发快速工作空间初始化算法
 
-## 使用示例
+## 配置
 
-### 基本操作流程
-
-1. **系统启动**:
-   ```bash
-   # 终端1: 启动机械臂
-   ros2 launch franka_vr franka_twist.launch.py
-   
-   # 终端2: 启动VR控制
-   sh /ws_moveit2/src/oculus_reader/start_vr.sh
-   ```
-
-2. **VR控制操作**:
-   - 戴上Meta Quest头显
-   - 握住控制器，确保在追踪范围内
-   - 按住右扳机开始控制机械臂
-   - 使用右握把控制夹爪开合
-
-3. **参数调整**:
-   ```bash
-   # 调整控制灵敏度
-   ros2 service call /set_step_size franka_vr/srv/SetStepSize \
-     "{linear_x: 0.02, linear_y: 0.02, linear_z: 0.02, angular_x: 0.2, angular_y: 0.2, angular_z: 0.2}"
-   ```
-
-### 高级配置
-
-#### 自定义坐标变换
+### 自定义坐标变换
 修改`start_franka_vr.py`中的变换参数：
 ```python
 # 调整缩放因子
@@ -303,7 +257,7 @@ self.scale = 2.0  # 默认1.5
 y_angle = np.deg2rad(45)  # 默认60度
 ```
 
-#### 夹爪控制参数
+### 夹爪控制参数
 调整夹爪控制阈值：
 ```python
 # 在start_franka_vr.py中修改
