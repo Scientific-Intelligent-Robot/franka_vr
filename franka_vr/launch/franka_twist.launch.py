@@ -108,7 +108,8 @@ def robot_description_dependent_nodes_spawner(
                                            }).toprettyxml(indent='  ')
 
     franka_controllers = PathJoinSubstitution(
-        [FindPackageShare('franka_bringup'), 'config', 'controllers.yaml'])
+        [FindPackageShare('franka_vr'), 'config', 'fr3_ros_controllers.yaml'])
+
     # 构建 MoveIt 配置
     moveit_config = setup_moveit_config()
     # # Get parameters for the Servo node
@@ -119,7 +120,7 @@ def robot_description_dependent_nodes_spawner(
     }
     # Servo node
     servo_node = Node(
-        package="moveit_servo",
+        package="franka_vr",
         executable="demo_franka_vr_vel",
         parameters=[
             servo_params,
@@ -229,9 +230,12 @@ def generate_launch_description():
                         'without an end-effector.'),
         DeclareLaunchArgument(
             arm_prefix_parameter_name,
-            default_value='fr3',
+            default_value='',
             description='The prefix of the arm.'),
-        
+        DeclareLaunchArgument(
+            'namespace',
+            default_value='',
+            description='Namespace for the gripper'),
     
         robot_description_dependent_nodes_spawner_opaque_function,
         Node(
@@ -262,15 +266,16 @@ def generate_launch_description():
         executable="spawner",
         arguments=["fr3_arm_controller", "-c", "/controller_manager"],
          ),
-    IncludeLaunchDescription(
-            PythonLaunchDescriptionSource([PathJoinSubstitution(
-                [FindPackageShare('franka_gripper'), 'launch', 'gripper.launch.py'])]),
-            launch_arguments={robot_ip_parameter_name: robot_ip,
-                              use_fake_hardware_parameter_name: use_fake_hardware,
-                              'arm_id':arm_id}.items(),
-            condition=IfCondition(load_gripper)
-        )
-    ,
+        IncludeLaunchDescription(
+                PythonLaunchDescriptionSource([PathJoinSubstitution(
+                    [FindPackageShare('franka_gripper'), 'launch', 'gripper.launch.py'])]),
+                launch_arguments={
+                    'namespace': LaunchConfiguration('namespace'),
+                                robot_ip_parameter_name: robot_ip,
+                                use_fake_hardware_parameter_name: use_fake_hardware,
+                                'arm_id':arm_id}.items(),
+                condition=IfCondition(load_gripper)
+            ),
         # Node(package='rviz2',
         #      executable='rviz2',
         #      name='rviz2',

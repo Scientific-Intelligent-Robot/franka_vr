@@ -30,6 +30,11 @@ find_package(moveit_servo REQUIRED)
 foreach(dependency IN ITEMS ${THIS_PACKAGE_INCLUDE_DEPENDS})
   find_package(${dependency} REQUIRED)
 endforeach()
+
+find_package(moveit_ros_planning REQUIRED
+  COMPONENTS moveit_default_planning_request_adapter_plugins
+)
+
 # 生成服务接口
 rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/SetStepSize.srv"
@@ -44,7 +49,7 @@ target_include_directories(demo_franka_vr_vel PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
 )
-target_link_libraries(demo_franka_vr_vel 
+target_link_libraries(demo_franka_vr_vel
   moveit_servo::moveit_servo_lib_cpp
   ${cpp_typesupport_target}  # 链接生成的服务接口
 )

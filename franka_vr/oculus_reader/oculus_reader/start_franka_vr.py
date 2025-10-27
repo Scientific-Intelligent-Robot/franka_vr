@@ -18,9 +18,9 @@ class OculusPublisher(Node):
         self.timer = self.create_timer(1.0 / 70.0, self.timer_callback)
 
         # 声明 oculus_base 的参数
-        self.declare_parameter('oculus_base.x', 0.05)
+        self.declare_parameter('oculus_base.x', 0.20)
         self.declare_parameter('oculus_base.y', 0.0)
-        self.declare_parameter('oculus_base.z', 0.45)
+        self.declare_parameter('oculus_base.z', 0.2)
         self.declare_parameter('oculus_base.roll', 3.14 / 2.0)
         self.declare_parameter('oculus_base.pitch', 0.0)
         self.declare_parameter('oculus_base.yaw', -3.14 / 2)
@@ -38,31 +38,34 @@ class OculusPublisher(Node):
             self.get_logger().info('Waiting for service set_target_pose...')
 
         # 创建 Action 客户端，用于夹爪控制
-        self.action_client = ActionClient(self, Move, '/fr3_gripper/move')
+        self.action_client = ActionClient(self, Move, '/franka/franka_gripper/move')
         while not self.action_client.wait_for_server(timeout_sec=1.0):
-            self.get_logger().info('Waiting for action server /fr3_gripper/move...')
+            self.get_logger().info('Waiting for action server /franka/franka_gripper/move...')
         # 创建 Homing Action 客户端
-        self.homing_client = ActionClient(self, Homing, '/fr3_gripper/homing')
+        self.homing_client = ActionClient(self, Homing, '/franka/franka_gripper/homing')
         while not self.homing_client.wait_for_server(timeout_sec=1.0):
-            self.get_logger().info('Waiting for action server /fr3_gripper/homing...')
+            self.get_logger().info('Waiting for action server /franka/franka_gripper/homing...')
 
         # 创建 Grasp Action 客户端
-        self.grasp_client = ActionClient(self, Grasp, '/fr3_gripper/grasp')
+        self.grasp_client = ActionClient(self, Grasp, '/franka/franka_gripper/grasp')
         while not self.grasp_client.wait_for_server(timeout_sec=1.0):
-            self.get_logger().info('Waiting for action server /fr3_gripper/grasp...')
+            self.get_logger().info('Waiting for action server /franka/franka_gripper/grasp...')
 
         # 夹爪状态跟踪
         self.gripper_state = False  # None: 未初始化, True: 关闭, False: 打开
-        self.scale = 1.5  # translation缩放因子
-    
-
+        # 末端位姿控制频率限制
+        self.last_pose_send_time = self.get_clock().now()
+        self.pose_send_interval = 0.05  # 20 Hz，避免通信约束违规
+        
         self.last_gripper_send_time = self.get_clock().now()
         self.gripper_send_interval = 0.2  # 5 Hz
-
-        self.scale = 1.5  # translation缩放因子
+        self.scale = 1.4  # translation缩放因子
 
         #过滤跳变
         self.last_transform = None
+        
+        # 跟踪 rightTrig 按钮状态，用于检测松开事件
+        self.last_right_trig_pressed = False
     def publish_static_transform(self):
         """发布从 world 到 oculus_base 的静态变换"""
         t = TransformStamped()
@@ -222,17 +225,41 @@ class OculusPublisher(Node):
             modified_left_pose = np.dot(left_controller_pose, rot_z_minus_90)
             self.publish_transform(modified_left_pose, 'oculus_left')
 
-        # 处理 rightTrig 控制末端位姿
-        if 'rightTrig' in buttons and buttons['rightTrig'][0] > 0.0:
+        # 处理 rightTrig 控制末端位姿（添加频率限制）
+        right_trig_pressed = 'rightTrig' in buttons and buttons['rightTrig'][0] > 0.0
+        
+        if right_trig_pressed:
+            # 按钮按下，持续发送目标位姿
+            current_time = self.get_clock().now()
+            time_since_last_send = (current_time - self.last_pose_send_time).nanoseconds / 1e9
+            
+            if time_since_last_send >= self.pose_send_interval:
+                try:
+                    trans = self.tf_buffer.lookup_transform(
+                        'world',
+                        'oculus_right',
+                        rclpy.time.Time()
+                    )
+                    self.send_target_pose(trans)
+                    self.last_pose_send_time = current_time
+                except Exception as e:
+                    self.get_logger().warn(f"Failed to lookup transform: {str(e)}")
+        elif self.last_right_trig_pressed and not right_trig_pressed:
+            # 检测到按钮从按下变为松开，发送当前机器人位姿作为目标让其停止
             try:
+                # 查询当前机器人末端执行器位姿
                 trans = self.tf_buffer.lookup_transform(
                     'world',
-                    'oculus_right',
+                    'fr3_hand',  # 机器人末端执行器坐标系
                     rclpy.time.Time()
                 )
                 self.send_target_pose(trans)
+                self.get_logger().info("Button released - stopping robot at current position")
             except Exception as e:
-                self.get_logger().warn(f"Failed to lookup transform: {str(e)}")
+                self.get_logger().warn(f"Failed to stop robot on button release: {str(e)}")
+        
+        # 更新按钮状态
+        self.last_right_trig_pressed = right_trig_pressed
 
         # 处理 rightGrip 控制夹爪
         if 'rightGrip' in buttons:
